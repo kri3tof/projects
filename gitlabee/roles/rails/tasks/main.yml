@@ -144,7 +144,7 @@
   lineinfile:
     path: /etc/ssh/sshd_config
     regexp: '^AllowGroups'
-    line: 'AllowGroups sshusers  cyberark_admin_accounts  OpsAdmin  ServerAdmin  S_SAMLXADPRD  satellite authorized_users git'
+    line: 'AllowGroups authorized_users git'
 
 - name: Reload service sshd
   systemd:
