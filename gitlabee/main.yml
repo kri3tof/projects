@@ -1,0 +1,29 @@
+- hosts: all
+  gather_facts: yes
+  become: true
+  tasks:
+    - name: Validate environment variable
+      assert:
+        quiet: true
+        that:
+          - env is match ("(tst|ref|prd)")
+        fail_msg: "Correct environment not provided!"
+
+    - name: Check gitlab installation status
+      stat:
+        path: /etc/gitlab
+      register: gitlab_installed
+
+    - name: Fail when gitlab is installed
+      fail:
+        msg: "Gitlab is already installed!"
+      when: gitlab_installed.stat.exists
+
+    - include_tasks: gitlabee_tst.yml
+      when: env == 'tst'
+
+    - include_tasks: gitlabee_ref.yml
+      when: env == 'ref'
+
+    - include_tasks: gitlabee_prd.yml
+      when: env == 'prd'

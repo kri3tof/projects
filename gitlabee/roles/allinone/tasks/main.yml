@@ -1,0 +1,115 @@
+# Has to be external LB hostname
+# - name: Setting external url variable
+#   set_fact:
+#     external_url: "https://{{ inventory_hostname }}"
+
+- name: Setting tst variables
+  set_fact:
+    external_url: "https://{{ urls.tst.lb_host }}"
+
+- name: Install prerequisite packages
+  yum:
+    name:
+      - policycoreutils-python-utils
+      - openssh-server
+      - perl
+    state: present
+
+- name: Enable gitlab-ee repositories
+  command: subscription-manager repos --enable={{ repository_name }}
+
+# Install exact version of the package
+- name: Install gitlab-ee package
+  yum:
+    name: "gitlab-ee-{{ versions.gitlabee }}-ee.0.el9.x86_64"
+    state: present
+
+- name: Disable gitlab-ee repositories
+  command: subscription-manager repos --disable={{ repository_name }}
+
+- name: Backup gitlab-ee config file
+  copy:
+    src: /etc/gitlab/gitlab.rb
+    dest: /etc/gitlab/gitlab.rb.old
+    remote_src: yes
+
+- name: Configure vm firewall
+  firewalld:
+    service: https
+    permanent: true
+    state: enabled
+
+# TODO Allow traffic from F5 balancer IP address only on port 443
+
+- name: Reload service firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+
+- name: Copy rootCA certificate for LDAP connection
+  copy:
+    src: files/rootCA.cer
+    dest: "{{ ldap.ca_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create a directory for certificates
+  file:
+    path: /etc/gitlab/ssl
+    state: directory
+    mode: '0755'
+
+- name: Copy server certificate for rails
+  copy:
+    src: files/gitlab-test.{{ proxy.hostname }}.crt
+    dest: /etc/gitlab/ssl/gitlab-test.{{ proxy.hostname }}.crt
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Copy server key for rails
+  copy:
+    src: files/gitlab-test.{{ proxy.hostname }}.key
+    dest: /etc/gitlab/ssl/gitlab-test.{{ proxy.hostname }}.key
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create gitlab-ee config file
+  template:
+    src: templates/gitlab.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Add git group to AllowGroups in sshd_config file
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^AllowGroups'
+    line: 'AllowGroups sshusers  cyberark_admin_accounts  OpsAdmin  ServerAdmin  S_SAMLXADPRD  satellite authorized_users git'
+
+- name: Reload service sshd
+  systemd:
+    name: sshd
+    state: reloaded
+
+- name: Run gitlab-ee installation
+  shell: "/usr/bin/gitlab-ctl reconfigure > /var/log/gitlabee-installation.log"
+  async: 2000
+  poll: 0
+  register: gitlab_ee_install
+
+- name: Check if gitlab-ee installation is complete
+  async_status:
+    jid: "{{ gitlab_ee_install.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 100
+  delay: 10
+
+- name: Verify gitlab-ee installation
+  shell: /usr/bin/gitlab-ctl status
+  register: gitlab_ee_status
+  failed_when: gitlab_ee_status.rc != 0

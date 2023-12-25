@@ -1,0 +1,85 @@
+- name: Setting ref variables
+  set_fact:
+    external_url: "http://{{ urls.ref.lb_host }}"
+    postgres_url: "{{ pgsql.db_host_ref }}"
+    gitaly_url: "{{ urls.ref.gitaly }}"
+    redis_url: "{{ urls.ref.redis }}"
+    rails1_url: "{{ urls.ref.rails1 }}"
+    rails2_url: "{{ urls.ref.rails2 }}"
+  when: env == 'ref'
+
+- name: Setting prd variables
+  set_fact:
+    external_url: "http://{{ urls.prd.lb_host }}"
+    postgres_url: "{{ pgsql.db_host_prd }}"
+    gitaly_url: "{{ urls.prd.gitaly }}"
+    redis_url: "{{ urls.prd.redis }}"
+    rails1_url: "{{ urls.prd.rails1 }}"
+    rails2_url: "{{ urls.prd.rails2 }}"
+  when: env == 'prd'
+
+- name: Install prerequisite packages
+  yum:
+    name:
+      - policycoreutils-python-utils
+      - openssh-server
+      - perl
+    state: present
+
+- name: Enable gitlab-ee repositories
+  command: subscription-manager repos --enable={{ repository_name }}
+
+# Install exact version of the package
+- name: Install gitlab-ee package
+  yum:
+    name: "gitlab-ee-{{ versions.gitlabee }}-ee.0.el9.x86_64"
+    state: present
+
+- name: Disable gitlab-ee repositories
+  command: subscription-manager repos --disable={{ repository_name }}
+
+- name: Backup gitlab-ee config file
+  copy:
+    src: /etc/gitlab/gitlab.rb
+    dest: /etc/gitlab/gitlab.rb.old
+    remote_src: yes
+
+- name : Configure vm firewall
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - 9090/tcp
+
+- name: Reload service firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+
+- name: Create gitlab-ee config file
+  template:
+    src: templates/gitlab.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Run gitlab-ee installation
+  shell: "/usr/bin/gitlab-ctl reconfigure > /var/log/gitlabee-installation.log"
+  async: 2000
+  poll: 0
+  register: gitlab_ee_install
+
+- name: Check if gitlab-ee installation is complete
+  async_status:
+    jid: "{{ gitlab_ee_install.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 30
+  delay: 10
+
+- name: Verify gitlab-ee installation
+  shell: /usr/bin/gitlab-ctl status
+  register: gitlab_ee_status
+  failed_when: gitlab_ee_status.rc != 0

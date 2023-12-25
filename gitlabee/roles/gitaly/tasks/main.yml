@@ -1,0 +1,133 @@
+- name: Setting ref internal api url variable
+  set_fact:
+    internal_api_url: "https://{{ urls.ref.lb_host }}"
+    internal_crt: "{{ urls.ref.gitaly }}.crt"
+    internal_key: "{{ urls.ref.gitaly }}.key"
+    proxy_username: "{{ proxy.username_tst }}"
+    proxy_password: "{{ proxy.password_tst }}"
+  when: env == 'ref'
+
+- name: Setting prd internal api url variable
+  set_fact:
+    internal_api_url: "https://{{ urls.prd.lb_host }}"
+    internal_crt: "{{ urls.prd.gitaly }}.crt"
+    internal_key: "{{ urls.prd.gitaly }}.key"
+    proxy_username: "{{ proxy.username_prd }}"
+    proxy_password: "{{ proxy.password_prd }}"
+  when: env == 'prd'
+
+- name: Install prerequisite packages
+  yum:
+    name:
+      - policycoreutils-python-utils
+      - openssh-server
+      - perl
+    state: present
+
+- name: Enable gitlab-ee repositories
+  command: subscription-manager repos --enable={{ repository_name }}
+
+# Install exact version of the package
+- name: Install gitlab-ee package
+  yum:
+    name: "gitlab-ee-{{ versions.gitlabee }}-ee.0.el9.x86_64"
+    state: present
+
+- name: Disable gitlab-ee repositories
+  command: subscription-manager repos --disable={{ repository_name }}
+
+- name: Backup gitlab-ee config file
+  copy:
+    src: /etc/gitlab/gitlab.rb
+    dest: /etc/gitlab/gitlab.rb.old
+    remote_src: yes
+
+- name : Configure vm firewall
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - 9100/tcp
+    - 9236/tcp
+    - 9999/tcp
+
+- name: Reload service firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+
+- name: Create a directory for certificates
+  file:
+    path: /etc/gitlab/ssl
+    state: directory
+    mode: '0755'
+
+- name: Copy server certificate for gitaly
+  copy:
+    src: "files/{{ internal_crt }}"
+    dest: "/etc/gitlab/ssl/{{ internal_crt }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Copy server key for gitaly
+  copy:
+    src: "files/{{ internal_key }}"
+    dest: "/etc/gitlab/ssl/{{ internal_key }}"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create a directory for trusted certificates
+  file:
+    path: /etc/gitlab/trusted-certs
+    state: directory
+    mode: '0755'
+
+- name: Copy server cert for gitaly to trusted certs
+  copy:
+    src: "/etc/gitlab/ssl/{{ internal_crt }}"
+    dest: "/etc/gitlab/trusted-certs/{{ internal_crt }}"
+    remote_src: yes
+
+- name: Create a directory for git-data
+  file:
+    path: /opt/gitlab/git-data
+    state: directory
+    owner: '988'
+    group: '988'
+    mode: '0700'
+
+- name: Create gitlab-ee config file
+  template:
+    src: templates/gitlab.j2
+    dest: /etc/gitlab/gitlab.rb
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Run gitlab-ee installation
+  shell: "/usr/bin/gitlab-ctl reconfigure > /var/log/gitlabee-installation.log"
+  async: 2000
+  poll: 0
+  register: gitlab_ee_install
+
+- name: Check if gitlab-ee installation is complete
+  async_status:
+    jid: "{{ gitlab_ee_install.ansible_job_id }}"
+  register: job_result
+  until: job_result.finished
+  retries: 30
+  delay: 10
+
+- name: Verify gitlab-ee installation
+  shell: /usr/bin/gitlab-ctl status
+  register: gitlab_ee_status
+  failed_when: gitlab_ee_status.rc != 0
+
+- name: Fetch server cert for gitaly from gitaly vm
+  fetch:
+    src: "/etc/gitlab/trusted-certs/{{ internal_crt }}"
+    dest: /tmp/{{ internal_crt }}
+    flat: yes

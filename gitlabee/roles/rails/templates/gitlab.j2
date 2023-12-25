@@ -1,0 +1,108 @@
+### GitLab URL
+###! Docs: https://docs.gitlab.com/omnibus/settings/configuration.html#configuring-the-external-url-for-gitlab
+external_url '{{ external_url }}'
+
+# Gitaly and GitLab use two shared secrets for authentication, one to authenticate gRPC requests
+# to Gitaly, and a second for authentication callbacks from GitLab-Shell to the GitLab internal API.
+# The following two values must be the same as their respective values
+# of the Gitaly setup
+gitlab_rails['gitaly_token'] = '{{ gitaly.auth_token }}'
+gitlab_shell['secret_token'] = '{{ gitaly.secret_token }}'
+
+git_data_dirs({
+  'default' => { 'gitaly_address' => 'tls://{{ gitaly_url }}:9999' },
+})
+
+## Disable components that will not be on the GitLab application server
+roles(['application_role'])
+gitaly['enable'] = false
+nginx['enable'] = true
+
+## PostgreSQL connection details
+gitlab_rails['db_adapter'] = 'postgresql'
+gitlab_rails['db_encoding'] = 'unicode'
+gitlab_rails['db_host'] = '{{ db_host }}' # IP/hostname of database server
+gitlab_rails['db_port'] = '{{ db_port }}'
+gitlab_rails['db_password'] = '{{ db_password }}'
+
+## Redis connection details
+gitlab_rails['redis_port'] = '6379'
+gitlab_rails['redis_host'] = '{{ redis_url }}' # IP/hostname of Redis server
+gitlab_rails['redis_password'] = '{{ redis.password }}'
+
+# Set the network addresses that the exporters used for monitoring will listen on
+node_exporter['listen_address'] = '0.0.0.0:9100'
+gitlab_workhorse['prometheus_listen_addr'] = '0.0.0.0:9229'
+puma['listen'] = '0.0.0.0'
+sidekiq['listen_address'] = "0.0.0.0"
+
+# Configure Sidekiq with 2 workers and 20 max concurrency
+sidekiq['max_concurrency'] = 20
+sidekiq['queue_groups'] = ['*'] * 2
+
+# Add the monitoring node's IP address to the monitoring whitelist and allow it to
+# scrape the NGINX metrics. Replace placeholder `monitoring.gitlab.example.com` with
+# the address and/or subnets gathered from the monitoring node
+gitlab_rails['monitoring_whitelist'] = ['{{ monitor_url }}/32', '127.0.0.0/8']
+nginx['status']['options']['allow'] = ['{{ monitor_url }}/32', '127.0.0.0/8']
+
+### Additional variables with corporate proxy settings
+###! Docs: https://docs.gitlab.com/omnibus/settings/environment-variables.html
+#gitlab_rails['env'] = {
+#    "http_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "https_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "no_proxy" => "127.0.0.1, localhost, {{ proxy.hostname }}, *.{{ proxy.hostname }}, unix"
+#}
+#gitlab_workhorse['env'] = {
+#    "http_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "https_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "no_proxy" => "127.0.0.1, localhost, {{ proxy.hostname }}, *.{{ proxy.hostname }}, unix"
+#}
+#gitlab_pages['env'] = {
+#    "http_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "https_proxy" => "http://{{ proxy_username }}:{{ proxy_password }}@{{ proxy.hostname }}",
+#    "no_proxy" => "127.0.0.1, localhost, {{ proxy.hostname }}, *.{{ proxy.hostname }}, unix"
+#}
+
+### GitLab email server settings
+###! Docs: https://docs.gitlab.com/omnibus/settings/smtp.html
+
+gitlab_rails['smtp_enable'] = true
+gitlab_rails['smtp_address'] = "{{ smtp.server }}"
+gitlab_rails['smtp_port'] = {{ smtp.port }}
+gitlab_rails['smtp_enable_starttls_auto'] = true
+gitlab_rails['smtp_openssl_verify_mode'] = 'none'
+gitlab_rails['smtp_ca_file'] = "{{ smtp.ca_file }}"
+gitlab_rails['gitlab_email_enabled'] = true
+gitlab_rails['gitlab_email_from'] = '{{ smtp.email_from }}'
+gitlab_rails['gitlab_email_display_name'] = '{{ smtp.email_display_name }}'
+
+### LDAP Settings
+###! Docs: https://docs.gitlab.com/omnibus/settings/ldap.html
+
+gitlab_rails['ldap_enabled'] = true
+gitlab_rails['ldap_servers'] = YAML.load <<-'EOS'
+  main: # 'main' is the GitLab 'provider ID' of this LDAP server
+    label: 'LDAP'
+    host: '{{ ldap.host }}'
+    port: {{ ldap.port }}
+    uid: '{{ ldap.uid }}'
+    bind_dn: '{{ ldap_bind_dn }}'
+    password: '{{ ldap_password }}'
+    encryption: '{{ ldap.encryption }}'
+    verify_certificates: true
+    ca_file: '{{ ldap.ca_file }}'
+    active_directory: true
+    ssl_version: 'TLSv1_2'
+    base: '{{ ldap.base }}'
+    admin_group: '{{ ldap.admin_group }}'
+    group_base: '{{ ldap.group_base }}'
+EOS
+
+### https://gitlab.com/gitlab-org/gitlab/-/issues/332600
+gitlab_rails['max_request_duration_seconds'] = 550
+puma['worker_timeout'] = 600
+
+gitlab_rails['env'] = {
+   'GITLAB_RAILS_RACK_TIMEOUT' => 600
+}

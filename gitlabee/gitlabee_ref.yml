@@ -1,0 +1,23 @@
+# https://docs.gitlab.com/ee/administration/reference_architectures/2k_users.html#configure-redis
+- import_role:
+    name: redis
+  when: inventory_hostname in groups.ref_redis
+
+# https://docs.gitlab.com/ee/administration/reference_architectures/2k_users.html#configure-gitaly
+- import_role:
+    name: gitaly
+  when: inventory_hostname in groups.ref_gitaly
+
+# https://docs.gitlab.com/ee/administration/reference_architectures/2k_users.html#configure-gitlab-rails
+- import_role:
+    name: rails
+  when: inventory_hostname == groups.ref_rails[0]
+
+#- import_role:
+#    name: rails
+#  when: inventory_hostname == groups.ref_rails[1]
+
+# https://docs.gitlab.com/ee/administration/reference_architectures/2k_users.html#configure-prometheus
+- import_role:
+    name: monitor
+  when: inventory_hostname in groups.ref_monitor
