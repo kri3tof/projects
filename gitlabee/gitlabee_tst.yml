@@ -1,3 +1,0 @@
-- import_role:
-    name: allinone
-  when: inventory_hostname in groups.tst_all
