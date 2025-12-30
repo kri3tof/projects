@@ -6,21 +6,7 @@ import shutil
 import requests
 import re
 
-url = 'http://whdownload.com/games.php?name=%&sort=0&dir=0'
-home_url = "http://whdownload.com/"
-pattern = re.compile(r'<td><a\shref="(.+?)">', re.S)
-r = requests.get(url)
-links = re.findall(pattern, r.text)
-
-for link in links:
-    print "Downloading: %s" % link
-    r = requests.get("%s%s" % (home_url, link))
-    f = open(link.split('/')[-1], 'wb')
-    f.write(r.content)
-    f.close()
-
 patterns_to_delete = [
-    "*_CD*.*",
     "*_CD32*.*",
     "*_CDTV*.*",
     "*_NTSC*.*",
@@ -47,10 +33,10 @@ for filename in os.listdir("."):
         try:
             with zipfile.ZipFile(filename, 'r') as zip_ref:
                 zip_ref.extractall(zip_dir)
-            print(f"Rozpakowano {filename} do {zip_dir}, usuwam archiwum.")
+            print(f"Rozpakowano {filename} do {zip_dir}, usuwam archiwum...")
             os.remove(filename)
         except zipfile.BadZipFile:
-            print(f"Nieprawidłowe archiwum ZIP: {filename}")
+            print(f"Nieprawidlowe archiwum ZIP: {filename}")
 
 for filename in os.listdir("."):
     if filename.endswith(".lha"):
@@ -58,7 +44,8 @@ for filename in os.listdir("."):
         os.makedirs(lha_dir, exist_ok=True)
         try:
             result = subprocess.run(["lha", f"-xw={lha_dir}", filename], check=True)
-            print(f"Rozpakowano {filename} do {lha_dir}, usuwam archiwum.")
+            print(f"Rozpakowano {filename} do {lha_dir}, usuwam archiwum...")
             os.remove(filename)
         except subprocess.CalledProcessError:
-            print(f"Błąd podczas rozpakowywania pliku LHA: {filename}")
+            print(f"Blad podczas rozpakowywania pliku LHA: {filename}")
+
