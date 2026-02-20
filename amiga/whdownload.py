@@ -13,7 +13,7 @@ r = requests.get(url)
 links = re.findall(pattern, r.text)
 
 for link in links:
-    print "Downloading: %s" % link
+    print ("Downloading: %s" % link)
     r = requests.get("%s%s" % (home_url, link))
     f = open(link.split('/')[-1], 'wb')
     f.write(r.content)
