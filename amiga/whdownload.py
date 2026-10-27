@@ -13,7 +13,7 @@ r = requests.get(url)
 links = re.findall(pattern, r.text)
 
 for link in links:
-    print "Downloading: %s" % link
+    print(f"Sciagam: {link}")
     r = requests.get("%s%s" % (home_url, link))
     f = open(link.split('/')[-1], 'wb')
     f.write(r.content)
@@ -35,7 +35,7 @@ for root, dirs, files in os.walk("."):
             os.remove(filepath)
 
 if os.path.isfile("EmeraldMines_v1.zip"):
-    print("Usuwam EmeraldMines_v1.zip")
+    print(f"Usuwam plik: EmeraldMines_v1.zip")
     os.remove("EmeraldMines_v1.zip")
 
 for filename in os.listdir("."):
